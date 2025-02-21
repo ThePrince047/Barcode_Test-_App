@@ -1,6 +1,11 @@
 package com.example.barcode_test_app;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -41,32 +46,69 @@ public class MainActivity extends AppCompatActivity {
         storagebtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                checkDevicePermissions(Manifest.permission.READ_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
-                checkDevicePermissions(Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    checkDevicePermissions(Manifest.permission.MANAGE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+                } else {
+                    checkDevicePermissions(Manifest.permission.READ_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+                    checkDevicePermissions(Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+                }
                 Toast.makeText(MainActivity.this, "btn clicked", Toast.LENGTH_SHORT).show();
             }
         });
+
     }
 
     public void checkDevicePermissions(String permission, int requestCode) {
-        // Check for permissions
         if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_DENIED) {
-            ActivityCompat.requestPermissions(this, new String[]{permission}, requestCode);
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
+                ActivityCompat.requestPermissions(this, new String[]{permission}, requestCode);
+            } else {
+                showSettingsDialog();
+            }
         }
     }
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == CAMERA_PERMISSION_CODE) {
+
+        if (requestCode == CAMERA_PERMISSION_CODE || requestCode == STORAGE_PERMISSION_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Camera Permission Granted", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show();
+            } else {
+                // If permission is denied twice, check "Don't ask again"
+                if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
+                    showSettingsDialog();
+                } else {
+                    Toast.makeText(this, "Permission Denied", Toast.LENGTH_SHORT).show();
+                }
             }
         }
-        if (requestCode == STORAGE_PERMISSION_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Storage Permission Granted", Toast.LENGTH_SHORT).show();
+    }
+    private void showSettingsDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Permission Required");
+        builder.setMessage("You have denied the permission permanently. You need to allow it manually from Settings.");
+
+        builder.setPositiveButton("Go to Settings", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Uri uri = Uri.fromParts("package", getPackageName(), null);
+                intent.setData(uri);
+                startActivity(intent);
             }
-        }
+        });
+
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.show();
     }
 }
