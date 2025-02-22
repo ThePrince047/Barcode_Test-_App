@@ -33,16 +33,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Load saved theme before setting content view
-        SharedPreferences prefs = getSharedPreferences("settings", MODE_PRIVATE);
-        boolean isDarkMode = prefs.getBoolean("darkMode", false);
-
-        if (isDarkMode) {
-            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
-        } else {
-            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
-        }
-
+        loadTheme();
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
@@ -57,92 +48,105 @@ public class MainActivity extends AppCompatActivity {
         themeGroup = findViewById(R.id.themeGrp);
         lightTheme = findViewById(R.id.lightTheme);
         darkTheme = findViewById(R.id.darkTheme);
-
-        // Set the radio button based on saved theme
-        if (isDarkMode) {
+        if (AppCompatDelegate.getDefaultNightMode() == AppCompatDelegate.MODE_NIGHT_YES) {
             darkTheme.setChecked(true);
         } else {
             lightTheme.setChecked(true);
         }
 
-        // Change theme on radio button selection
         themeGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            SharedPreferences.Editor editor = prefs.edit();
-            if (checkedId == R.id.lightTheme) {
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
-                editor.putBoolean("darkMode", false);
-            } else if (checkedId == R.id.darkTheme) {
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
-                editor.putBoolean("darkMode", true);
+            if (checkedId == R.id.darkTheme) {
+                setThemeMode(AppCompatDelegate.MODE_NIGHT_YES);
+            } else {
+                setThemeMode(AppCompatDelegate.MODE_NIGHT_NO);
             }
-            editor.apply();
-
-            // 🔥 Restart activity for theme change to apply
-            recreate();
         });
-
         scanButton.setOnClickListener(view -> checkCameraPermission());
+    }
+    private void loadTheme() {
+        SharedPreferences prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        boolean isDarkMode = prefs.getBoolean("darkMode", false);
+        AppCompatDelegate.setDefaultNightMode(isDarkMode ?
+                AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO);
+    }
+    private void setThemeMode(int mode) {
+        AppCompatDelegate.setDefaultNightMode(mode);
+
+        SharedPreferences.Editor editor = getSharedPreferences("settings", MODE_PRIVATE).edit();
+        editor.putBoolean("darkMode", mode == AppCompatDelegate.MODE_NIGHT_YES);
+        editor.apply();
     }
 
     public void checkCameraPermission() {
         SharedPreferences prefs = getSharedPreferences("permissionPrefs", MODE_PRIVATE);
-        int denialCount = prefs.getInt(Manifest.permission.CAMERA, 0);
+        int denialCount = prefs.getInt("camera_denial_count", 0);  // Using correct key
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
             if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)) {
                 if (denialCount < 1) {
                     SharedPreferences.Editor editor = prefs.edit();
-                    editor.putInt(Manifest.permission.CAMERA, denialCount + 1);
+                    editor.putInt("camera_denial_count", denialCount + 1);
                     editor.apply();
                     ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
                 } else {
                     showSettingsDialog();
                 }
             } else {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
+                if (denialCount >= 1) {
+                    showSettingsDialog();
+                } else {
+                    ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
+                }
             }
         } else {
             Toast.makeText(this, "Camera Permission already granted", Toast.LENGTH_SHORT).show();
         }
     }
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         SharedPreferences prefs = getSharedPreferences("permissionPrefs", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
 
         if (requestCode == CAMERA_PERMISSION_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                SharedPreferences.Editor editor = prefs.edit();
-                editor.putInt(Manifest.permission.CAMERA, 0);
+                // Reset denial count when granted
+                editor.putInt("camera_denial_count", 0);
                 editor.apply();
                 Toast.makeText(this, "Camera Permission Granted", Toast.LENGTH_SHORT).show();
             } else {
-                int denialCount = prefs.getInt(Manifest.permission.CAMERA, 0);
-                if (denialCount >= 2) {
+                int denialCount = prefs.getInt("camera_denial_count", 0);
+                if (denialCount >= 1) {
                     showSettingsDialog();
                 } else {
-                    Toast.makeText(this, "Camera Permission Denied, Please allow again.", Toast.LENGTH_SHORT).show();
+                    editor.putInt("camera_denial_count", denialCount + 1);
+                    editor.apply();
+                    Toast.makeText(this, "Camera Permission Denied. Please allow again.", Toast.LENGTH_SHORT).show();
                 }
             }
         }
     }
-
     private void showSettingsDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Permission Required");
-        builder.setMessage("You have denied the permission permanently. You need to allow it manually from Settings.");
+        builder.setMessage("You have denied the permission multiple times. You must enable it manually in Settings.");
 
-        builder.setPositiveButton("Go to Settings", (dialog, which) -> {
-            dialog.dismiss();
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-            Uri uri = Uri.fromParts("package", getPackageName(), null);
-            intent.setData(uri);
-            startActivity(intent);
+        builder.setPositiveButton("Go to Settings", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Uri uri = Uri.fromParts("package", getPackageName(), null);
+                intent.setData(uri);
+                startActivity(intent);
+            }
         });
-
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
-
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
         builder.show();
     }
 }
