@@ -21,6 +21,30 @@
         android:textStyle="bold"
         />
 
+    <RadioGroup
+        android:id="@+id/themeGrp"
+        android:layout_above="@id/img"
+        android:layout_width="match_parent"
+        android:layout_marginBottom="-20dp"
+        android:layout_height="wrap_content">
+        <RadioButton
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Light Theme"
+            android:id="@+id/lightTheme"
+            android:checked="true"
+            style="@style/text"
+            />
+        <RadioButton
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Dark Theme"
+            android:id="@+id/darkTheme"
+            android:checked="true"
+            style="@style/text"
+            />
+    </RadioGroup>
+
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="450dp"
@@ -29,31 +53,16 @@
         android:id="@+id/img"
         />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
-        android:layout_alignParentBottom="true"
-        android:orientation="horizontal"
-        android:weightSum="2"
-        android:layout_marginBottom="25dp">
         <com.google.android.material.button.MaterialButton
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             app:cornerRadius="5dp"
+            android:layout_alignParentBottom="true"
+            android:layout_marginBottom="20dp"
+            android:layout_centerHorizontal="true"
             android:id="@+id/scanbtn"
             android:layout_marginEnd="70dp"
             android:text="Scan Barcode"
             style="@style/button"
             />
-        <com.google.android.material.button.MaterialButton
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:cornerRadius="5dp"
-            android:id="@+id/storagebtn"
-            android:text="Take From Storage"
-            style="@style/button"
-            />
-    </LinearLayout>
 </RelativeLayout>
