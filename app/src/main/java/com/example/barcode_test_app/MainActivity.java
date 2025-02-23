@@ -12,6 +12,7 @@ import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
@@ -108,7 +109,11 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == SCAN_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
             String scannedData = data.getStringExtra("SCANNED_DATA");
-            Toast.makeText(this, "Scanned: " + scannedData, Toast.LENGTH_LONG).show();
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Scanned Data");
+            builder.setMessage(scannedData);
+            builder.setPositiveButton("OK", (dialog, which) -> dialog.dismiss());
+            builder.show();
         }
     }
 }
