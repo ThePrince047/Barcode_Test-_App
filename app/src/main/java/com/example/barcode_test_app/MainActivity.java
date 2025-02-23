@@ -1,15 +1,9 @@
 package com.example.barcode_test_app;
 
 import android.Manifest;
-import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
-import android.provider.Settings;
 import android.view.View;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -25,27 +19,32 @@ import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.camera.core.*;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.lifecycle.LifecycleOwner;
 
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
 import com.google.mlkit.vision.barcode.common.Barcode;
-
 import com.google.mlkit.vision.barcode.BarcodeScanning;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.barcode.BarcodeScanner;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private static final int CAMERA_PERMISSION_CODE = 100;
-    private static final int CAMERA_REQUEST_CODE = 200;
+    private ExecutorService cameraExecutor;
+    private boolean isScanning = false; // Prevent duplicate scans
 
     private RadioGroup themeGroup;
     private RadioButton lightTheme, darkTheme;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Apply saved theme preference
         applySavedTheme();
-
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
@@ -56,15 +55,12 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        // Initialize UI elements
         themeGroup = findViewById(R.id.themeGrp);
         lightTheme = findViewById(R.id.lightTheme);
         darkTheme = findViewById(R.id.darkTheme);
 
-        // Set correct theme selection
         setThemeSelection();
 
-        // Handle theme change
         themeGroup.setOnCheckedChangeListener((group, checkedId) -> {
             if (checkedId == R.id.lightTheme) {
                 AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
@@ -76,6 +72,8 @@ public class MainActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.scanbtn).setOnClickListener(view -> checkCameraPermission());
+
+        cameraExecutor = Executors.newSingleThreadExecutor();
     }
 
     private void applySavedTheme() {
@@ -108,60 +106,70 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void checkCameraPermission() {
-        SharedPreferences prefs = getSharedPreferences("permissionPrefs", MODE_PRIVATE);
-        int denialCount = prefs.getInt(Manifest.permission.CAMERA, 0);
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)) {
-                if (denialCount < 1) {
-                    SharedPreferences.Editor editor = prefs.edit();
-                    editor.putInt(Manifest.permission.CAMERA, denialCount + 1);
-                    editor.apply();
-                    ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
-                } else {
-                    showSettingsDialog();
-                }
-            } else {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
-            }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            startCameraForBarcodeScanning();
         } else {
-            openCamera();
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
         }
-    }
-
-    private void openCamera() {
-        Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        startActivityForResult(cameraIntent, CAMERA_REQUEST_CODE);
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if (requestCode == CAMERA_REQUEST_CODE && resultCode == RESULT_OK) {
-            Bundle extras = data.getExtras();
-            Bitmap bitmap = (Bitmap) extras.get("data");
-
-            if (bitmap != null) {
-                scanBarcodeFromBitmap(bitmap);
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == CAMERA_PERMISSION_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCameraForBarcodeScanning();
+            } else {
+                Toast.makeText(this, "Camera Permission Denied", Toast.LENGTH_SHORT).show();
             }
         }
     }
 
-    private void scanBarcodeFromBitmap(Bitmap bitmap) {
-        InputImage image = InputImage.fromBitmap(bitmap, 0);
-        BarcodeScanner scanner = BarcodeScanning.getClient();
+    private void startCameraForBarcodeScanning() {
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
 
-        scanner.process(image)
-                .addOnSuccessListener(barcodes -> {
-                    if (!barcodes.isEmpty()) {
-                        String scannedData = extractBarcodeData(barcodes);
-                        showScannedDataPopup(scannedData);
-                    } else {
-                        Toast.makeText(MainActivity.this, "No barcode detected", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .addOnFailureListener(e -> Toast.makeText(MainActivity.this, "Failed to scan barcode", Toast.LENGTH_SHORT).show());
+        cameraProviderFuture.addListener(() -> {
+            try {
+                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+
+                ImageAnalysis imageAnalysis =
+                        new ImageAnalysis.Builder()
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build();
+
+                imageAnalysis.setAnalyzer(cameraExecutor, image -> {
+                    @SuppressWarnings("UnsafeOptInUsageError")
+                    InputImage inputImage = InputImage.fromMediaImage(image.getImage(), image.getImageInfo().getRotationDegrees());
+
+                    BarcodeScannerOptions options =
+                            new BarcodeScannerOptions.Builder()
+                                    .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                                    .build();
+
+                    BarcodeScanner scanner = BarcodeScanning.getClient(options);
+                    scanner.process(inputImage)
+                            .addOnSuccessListener(barcodes -> {
+                                if (!barcodes.isEmpty() && !isScanning) {
+                                    isScanning = true;
+                                    String scannedData = extractBarcodeData(barcodes);
+                                    showScannedDataPopup(scannedData);
+                                }
+                            })
+                            .addOnFailureListener(Throwable::printStackTrace)
+                            .addOnCompleteListener(task -> image.close());
+                });
+
+                CameraSelector cameraSelector = new CameraSelector.Builder()
+                        .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+                        .build();
+
+                cameraProvider.unbindAll();
+                cameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, imageAnalysis);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, ContextCompat.getMainExecutor(this));
     }
 
     private String extractBarcodeData(List<Barcode> barcodes) {
@@ -173,54 +181,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showScannedDataPopup(String scannedData) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Scanned Data");
-        builder.setMessage(scannedData);
+        runOnUiThread(() -> {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Scanned Data");
+            builder.setMessage(scannedData);
 
-        builder.setPositiveButton("OK", (dialog, which) -> dialog.dismiss());
+            builder.setPositiveButton("OK", (dialog, which) -> {
+                dialog.dismiss();
+                isScanning = false; // Allow next scan
+            });
 
-        builder.show();
+            builder.show();
+        });
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        SharedPreferences prefs = getSharedPreferences("permissionPrefs", MODE_PRIVATE);
-        SharedPreferences.Editor editor = prefs.edit();
-
-        if (requestCode == CAMERA_PERMISSION_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                editor.putInt(Manifest.permission.CAMERA, 0);
-                editor.apply();
-                openCamera();
-            } else {
-                int denialCount = prefs.getInt(Manifest.permission.CAMERA, 0);
-                if (denialCount >= 1) {
-                    showSettingsDialog();
-                } else {
-                    editor.putInt(Manifest.permission.CAMERA, denialCount + 1);
-                    editor.apply();
-                    Toast.makeText(this, "Camera Permission Denied. Please allow again.", Toast.LENGTH_SHORT).show();
-                }
-            }
-        }
-    }
-
-    private void showSettingsDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Permission Required");
-        builder.setMessage("You have denied the permission multiple times. You must enable it manually in Settings.");
-
-        builder.setPositiveButton("Go to Settings", (dialog, which) -> {
-            dialog.dismiss();
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-            Uri uri = Uri.fromParts("package", getPackageName(), null);
-            intent.setData(uri);
-            startActivity(intent);
-        });
-
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
-
-        builder.show();
+    protected void onDestroy() {
+        super.onDestroy();
+        cameraExecutor.shutdown();
     }
 }
