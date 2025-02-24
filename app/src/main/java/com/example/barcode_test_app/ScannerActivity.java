@@ -3,7 +3,10 @@ package com.example.barcode_test_app;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.Button;
+import android.view.View;
+import android.widget.ImageButton;
+import android.widget.RelativeLayout;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.*;
@@ -11,6 +14,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.content.ContextCompat;
 import androidx.camera.view.PreviewView;
 
+import com.google.android.material.button.MaterialButton;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.barcode.BarcodeScanner;
@@ -27,7 +31,12 @@ public class ScannerActivity extends AppCompatActivity {
     private PreviewView previewView;
     private ExecutorService cameraExecutor;
     private ProcessCameraProvider cameraProvider;
-    private boolean isScanning = false; // Prevent multiple scans
+    private Camera camera; // Store the camera instance
+    private boolean isScanning = false;
+    private boolean isFlashOn = false; // Flash state
+    private int cameraFacing = CameraSelector.LENS_FACING_BACK; // Default to back camera
+
+    private MaterialButton switchCameraButton, flashToggleButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,13 +44,17 @@ public class ScannerActivity extends AppCompatActivity {
         setContentView(R.layout.activity_scanner);
 
         previewView = findViewById(R.id.previewView);
-        Button closeBtn = findViewById(R.id.closeBtn);
+        RelativeLayout closeBtn = findViewById(R.id.closeBtn);
+        switchCameraButton = findViewById(R.id.changeCamera);
+        flashToggleButton = findViewById(R.id.flashtoggle);
 
         cameraExecutor = Executors.newSingleThreadExecutor();
 
-        closeBtn.setOnClickListener(v -> finish()); // Close ScannerActivity
+        closeBtn.setOnClickListener(v -> finish());
 
-        // Start Camera
+        switchCameraButton.setOnClickListener(v -> switchCamera());
+        flashToggleButton.setOnClickListener(v -> toggleFlash());
+
         startCamera();
     }
 
@@ -51,52 +64,7 @@ public class ScannerActivity extends AppCompatActivity {
         cameraProviderFuture.addListener(() -> {
             try {
                 cameraProvider = cameraProviderFuture.get();
-
-                CameraSelector cameraSelector = new CameraSelector.Builder()
-                        .requireLensFacing(CameraSelector.LENS_FACING_BACK) // Use the rear camera
-                        .build();
-
-                Preview preview = new Preview.Builder().build();
-                preview.setSurfaceProvider(previewView.getSurfaceProvider()); // ✅ Set PreviewView SurfaceProvider
-
-                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build();
-
-                imageAnalysis.setAnalyzer(cameraExecutor, image -> {
-                    if (image.getImage() == null || isScanning) {
-                        image.close();
-                        return;
-                    }
-
-                    isScanning = true; // Prevent multiple scans
-                    InputImage inputImage = InputImage.fromMediaImage(image.getImage(), image.getImageInfo().getRotationDegrees());
-
-                    BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
-                            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-                            .build();
-
-                    BarcodeScanner scanner = BarcodeScanning.getClient(options);
-                    scanner.process(inputImage)
-                            .addOnSuccessListener(barcodes -> {
-                                if (!barcodes.isEmpty()) {
-                                    String scannedData = extractBarcodeData(barcodes);
-                                    sendResultAndClose(scannedData);
-                                } else {
-                                    isScanning = false; // Allow another scan
-                                }
-                            })
-                            .addOnFailureListener(e -> {
-                                e.printStackTrace();
-                                isScanning = false;
-                            })
-                            .addOnCompleteListener(task -> image.close());
-                });
-
-                // Unbind previous camera use cases before binding a new one
-                cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
-
+                bindCameraUseCases();
             } catch (Exception e) {
                 e.printStackTrace();
                 Log.e("CameraX", "Failed to bind camera", e);
@@ -104,11 +72,79 @@ public class ScannerActivity extends AppCompatActivity {
         }, ContextCompat.getMainExecutor(this));
     }
 
+    private void bindCameraUseCases() {
+        if (cameraProvider == null) return;
+
+        // Unbind any existing use cases before rebinding
+        cameraProvider.unbindAll();
+
+        CameraSelector cameraSelector = new CameraSelector.Builder()
+                .requireLensFacing(cameraFacing)
+                .build();
+
+        Preview preview = new Preview.Builder().build();
+        preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+        ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build();
+
+        imageAnalysis.setAnalyzer(cameraExecutor, image -> {
+            if (image.getImage() == null || isScanning) {
+                image.close();
+                return;
+            }
+
+            isScanning = true;
+            InputImage inputImage = InputImage.fromMediaImage(image.getImage(), image.getImageInfo().getRotationDegrees());
+
+            BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                    .build();
+
+            BarcodeScanner scanner = BarcodeScanning.getClient(options);
+            scanner.process(inputImage)
+                    .addOnSuccessListener(barcodes -> {
+                        if (!barcodes.isEmpty()) {
+                            String scannedData = extractBarcodeData(barcodes);
+                            sendResultAndClose(scannedData);
+                        } else {
+                            isScanning = false;
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        e.printStackTrace();
+                        isScanning = false;
+                    })
+                    .addOnCompleteListener(task -> image.close());
+        });
+
+        // Bind camera lifecycle
+        camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
+    }
+
+    private void switchCamera() {
+        // Toggle between front and back cameras
+        cameraFacing = (cameraFacing == CameraSelector.LENS_FACING_BACK)
+                ? CameraSelector.LENS_FACING_FRONT
+                : CameraSelector.LENS_FACING_BACK;
+
+        // Restart camera with new lens facing
+        bindCameraUseCases();
+    }
+
+    private void toggleFlash() {
+        if (camera != null && camera.getCameraInfo().hasFlashUnit()) {
+            isFlashOn = !isFlashOn;
+            camera.getCameraControl().enableTorch(isFlashOn);
+        }
+    }
+
     private void sendResultAndClose(String scannedData) {
         Intent resultIntent = new Intent();
         resultIntent.putExtra("SCANNED_DATA", scannedData);
         setResult(RESULT_OK, resultIntent);
-        finish(); // Close activity and return result to MainActivity
+        finish();
     }
 
     private String extractBarcodeData(List<Barcode> barcodes) {
