@@ -74,14 +74,10 @@ public class ScannerActivity extends AppCompatActivity {
 
     private void bindCameraUseCases() {
         if (cameraProvider == null) return;
-
-        // Unbind any existing use cases before rebinding
         cameraProvider.unbindAll();
-
         CameraSelector cameraSelector = new CameraSelector.Builder()
                 .requireLensFacing(cameraFacing)
                 .build();
-
         Preview preview = new Preview.Builder().build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
@@ -119,17 +115,13 @@ public class ScannerActivity extends AppCompatActivity {
                     .addOnCompleteListener(task -> image.close());
         });
 
-        // Bind camera lifecycle
         camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
     }
 
     private void switchCamera() {
-        // Toggle between front and back cameras
         cameraFacing = (cameraFacing == CameraSelector.LENS_FACING_BACK)
                 ? CameraSelector.LENS_FACING_FRONT
                 : CameraSelector.LENS_FACING_BACK;
-
-        // Restart camera with new lens facing
         bindCameraUseCases();
     }
 
