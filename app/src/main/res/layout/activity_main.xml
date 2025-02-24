@@ -17,6 +17,7 @@
         android:gravity="center"
         style="@style/text"
         android:layout_marginTop="10dp"
+        android:id="@+id/textdemo"
         android:textSize="40dp"
         android:textStyle="bold"
         />
@@ -24,9 +25,9 @@
 
     <RadioGroup
         android:id="@+id/themeGrp"
-        android:layout_above="@id/img"
+        android:layout_below="@id/textdemo"
         android:layout_width="match_parent"
-        android:layout_marginBottom="-20dp"
+        android:layout_marginTop="20dp"
         android:layout_height="wrap_content">
         <RadioButton
             android:layout_width="wrap_content"
@@ -46,12 +47,16 @@
             />
     </RadioGroup>
 
-    <ImageView
+    <ListView
         android:layout_width="match_parent"
-        android:layout_height="450dp"
-        android:layout_centerInParent="true"
-        android:src="@drawable/img_1"
-        android:id="@+id/img"
+        android:layout_height="wrap_content"
+        android:id="@+id/listView"
+        android:layout_below="@id/themeGrp"
+        android:layout_above="@id/scanbtn"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp"
+        android:layout_marginStart="15dp"
+        android:layout_marginEnd="15dp"
         />
 
         <com.google.android.material.button.MaterialButton

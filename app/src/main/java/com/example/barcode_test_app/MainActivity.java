@@ -6,24 +6,30 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.util.ArrayList;
+
 public class MainActivity extends AppCompatActivity {
     private static final int CAMERA_PERMISSION_CODE = 100;
-    private static final int SCAN_REQUEST_CODE = 101; // Request code for ScannerActivity
+    private static final int SCAN_REQUEST_CODE = 101;
 
     private RadioGroup themeGroup;
     private RadioButton lightTheme, darkTheme;
+    private ListView scannedListView;
+    private ArrayList<String> scannedDataList;
+    private ArrayAdapter<String> listAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
         themeGroup = findViewById(R.id.themeGrp);
         lightTheme = findViewById(R.id.lightTheme);
         darkTheme = findViewById(R.id.darkTheme);
+        scannedListView = findViewById(R.id.listView);
 
         setThemeSelection();
 
@@ -48,6 +55,11 @@ public class MainActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.scanbtn).setOnClickListener(view -> checkCameraPermission());
+
+        // Initialize ListView & Adapter
+        scannedDataList = new ArrayList<>();
+        listAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, scannedDataList);
+        scannedListView.setAdapter(listAdapter);
     }
 
     private void applySavedTheme() {
@@ -81,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void checkCameraPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            openScannerActivity(); // ✅ Open ScannerActivity directly
+            openScannerActivity();
         } else {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
         }
@@ -92,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == CAMERA_PERMISSION_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                openScannerActivity(); // ✅ Open ScannerActivity if permission is granted
+                openScannerActivity();
             } else {
                 Toast.makeText(this, "Camera Permission Denied", Toast.LENGTH_SHORT).show();
             }
@@ -101,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void openScannerActivity() {
         Intent intent = new Intent(MainActivity.this, ScannerActivity.class);
-        startActivityForResult(intent, SCAN_REQUEST_CODE); // ✅ Start ScannerActivity
+        startActivityForResult(intent, SCAN_REQUEST_CODE);
     }
 
     @Override
@@ -109,11 +121,10 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == SCAN_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
             String scannedData = data.getStringExtra("SCANNED_DATA");
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle("Scanned Data");
-            builder.setMessage(scannedData);
-            builder.setPositiveButton("OK", (dialog, which) -> dialog.dismiss());
-            builder.show();
+
+            // ✅ Add scanned data to ListView
+            scannedDataList.add(scannedData);
+            listAdapter.notifyDataSetChanged();
         }
     }
 }
