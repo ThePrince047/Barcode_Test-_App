@@ -33,6 +33,15 @@
 
         </RelativeLayout>
 
+        <SeekBar
+            android:id="@+id/zoomSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="50"
+            android:layout_below="@id/closeBtn"
+            android:progress="0"
+            android:layout_margin="16dp"/>
+
         <com.google.android.material.button.MaterialButton
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

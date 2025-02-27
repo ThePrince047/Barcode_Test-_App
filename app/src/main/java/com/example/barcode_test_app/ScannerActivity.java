@@ -3,11 +3,9 @@ package com.example.barcode_test_app;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
-import android.widget.ImageButton;
 import android.widget.RelativeLayout;
+import android.widget.SeekBar;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.*;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -31,12 +29,13 @@ public class ScannerActivity extends AppCompatActivity {
     private PreviewView previewView;
     private ExecutorService cameraExecutor;
     private ProcessCameraProvider cameraProvider;
-    private Camera camera; // Store the camera instance
+    private Camera camera;
     private boolean isScanning = false;
-    private boolean isFlashOn = false; // Flash state
-    private int cameraFacing = CameraSelector.LENS_FACING_BACK; // Default to back camera
+    private boolean isFlashOn = false;
+    private int cameraFacing = CameraSelector.LENS_FACING_BACK;
 
     private MaterialButton switchCameraButton, flashToggleButton;
+    private SeekBar zoomSeekBar; // For manual zoom
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,13 +46,29 @@ public class ScannerActivity extends AppCompatActivity {
         RelativeLayout closeBtn = findViewById(R.id.closeBtn);
         switchCameraButton = findViewById(R.id.changeCamera);
         flashToggleButton = findViewById(R.id.flashtoggle);
+        zoomSeekBar = findViewById(R.id.zoomSeekBar); // Initialize SeekBar
 
         cameraExecutor = Executors.newSingleThreadExecutor();
 
         closeBtn.setOnClickListener(v -> finish());
-
         switchCameraButton.setOnClickListener(v -> switchCamera());
         flashToggleButton.setOnClickListener(v -> toggleFlash());
+
+        zoomSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (camera != null) {
+                    float zoomRatio = 1.0f + (progress / 10.0f); // Convert SeekBar progress to zoom range
+                    camera.getCameraControl().setZoomRatio(zoomRatio);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
 
         startCamera();
     }
@@ -102,6 +117,7 @@ public class ScannerActivity extends AppCompatActivity {
             scanner.process(inputImage)
                     .addOnSuccessListener(barcodes -> {
                         if (!barcodes.isEmpty()) {
+                            adjustZoomForBarcode(); // Automatic Zoom when QR detected
                             String scannedData = extractBarcodeData(barcodes);
                             sendResultAndClose(scannedData);
                         } else {
@@ -129,6 +145,12 @@ public class ScannerActivity extends AppCompatActivity {
         if (camera != null && camera.getCameraInfo().hasFlashUnit()) {
             isFlashOn = !isFlashOn;
             camera.getCameraControl().enableTorch(isFlashOn);
+        }
+    }
+
+    private void adjustZoomForBarcode() {
+        if (camera != null) {
+            camera.getCameraControl().setZoomRatio(2.5f); // Automatically zoom when QR detected
         }
     }
 
